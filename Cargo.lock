@@ -142,7 +142,7 @@ dependencies = [
 
 [[package]]
 name = "compak"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "bzip2 0.6.0",
  "flate2",
