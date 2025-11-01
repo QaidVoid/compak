@@ -7,7 +7,7 @@ use std::{
 
 use crate::format::ArchiveFormat;
 
-pub(crate) type Result<T> = std::result::Result<T, ArchiveError>;
+pub type Result<T> = std::result::Result<T, ArchiveError>;
 
 /// A string type that can be either borrowed or owned, optimized for error messages.
 ///
@@ -67,7 +67,7 @@ pub enum ArchiveError {
     /// A required file or archive was not found.
     ///
     /// This error occurs when attempting to access a file or archive
-    /// that does not exist at the specified path.    
+    /// that does not exist at the specified path.
     NotFound { path: ErrorStr },
 
     /// Access to a file or directory was denied.
@@ -94,7 +94,7 @@ pub enum ArchiveError {
     /// A requested feature is not supported.
     ///
     /// This error occurs when attempting to use functionality
-    /// that is not implemented or not available in the current context.    
+    /// that is not implemented or not available in the current context.
     Unsupported { feature: ErrorStr },
 
     /// An invalid password was provided for an encrypted archive.
@@ -123,38 +123,62 @@ impl Display for ArchiveError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ArchiveError::Io {
-                context, message, ..
+                context,
+                message,
+                ..
             } => {
                 write!(f, "I/O error during {}: {}", context, message)
             }
-            ArchiveError::Format { format, message } => {
+            ArchiveError::Format {
+                format,
+                message,
+            } => {
                 write!(f, "{} format error: {}", format, message)
             }
-            ArchiveError::Compression { algorithm, message } => {
+            ArchiveError::Compression {
+                algorithm,
+                message,
+            } => {
                 write!(f, "{} compression error: {}", algorithm, message)
             }
-            ArchiveError::NotFound { path } => {
+            ArchiveError::NotFound {
+                path,
+            } => {
                 write!(f, "File or archive not found: {}", path)
             }
-            ArchiveError::PermissionDenied { path } => {
+            ArchiveError::PermissionDenied {
+                path,
+            } => {
                 write!(f, "Permission denied accessing: {}", path)
             }
-            ArchiveError::AlreadyExists { path } => {
+            ArchiveError::AlreadyExists {
+                path,
+            } => {
                 write!(f, "File or directory already exists: {}", path)
             }
-            ArchiveError::InvalidArchive { format, reason } => {
+            ArchiveError::InvalidArchive {
+                format,
+                reason,
+            } => {
                 write!(f, "Invalid {} archive: {}", format, reason)
             }
-            ArchiveError::Unsupported { feature } => {
+            ArchiveError::Unsupported {
+                feature,
+            } => {
                 write!(f, "Unsupported feature: {}", feature)
             }
             ArchiveError::InvalidPassword => {
                 write!(f, "Invalid password provided for encrypted archive")
             }
-            ArchiveError::Custom { message } => {
+            ArchiveError::Custom {
+                message,
+            } => {
                 write!(f, "{}", message)
             }
-            ArchiveError::Nested { context, source } => {
+            ArchiveError::Nested {
+                context,
+                source,
+            } => {
                 write!(f, "{}: {}", context, source)
             }
         }
@@ -164,7 +188,9 @@ impl Display for ArchiveError {
 impl std::error::Error for ArchiveError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            ArchiveError::Nested { source, .. } => Some(source.as_ref()),
+            ArchiveError::Nested {
+                source, ..
+            } => Some(source.as_ref()),
             _ => None,
         }
     }
@@ -424,20 +450,36 @@ impl From<zip::result::ZipError> for ArchiveError {
 
         match err {
             ZipError::Io(io_err) => Self::io_from_error("ZIP I/O operation", io_err),
-            ZipError::InvalidArchive(msg) => Self::InvalidArchive {
-                format: ArchiveFormat::Zip,
-                reason: msg,
-            },
-            ZipError::UnsupportedArchive(msg) => Self::Unsupported {
-                feature: Cow::Owned(format!("ZIP feature: {}", msg)),
-            },
-            ZipError::FileNotFound => Self::NotFound {
-                path: Cow::Borrowed("file in ZIP archive"),
-            },
+            ZipError::InvalidArchive(msg) => {
+                Self::InvalidArchive {
+                    format: ArchiveFormat::Zip,
+                    reason: msg,
+                }
+            }
+            ZipError::UnsupportedArchive(msg) => {
+                Self::Unsupported {
+                    feature: Cow::Owned(format!("ZIP feature: {}", msg)),
+                }
+            }
+            ZipError::FileNotFound => {
+                Self::NotFound {
+                    path: Cow::Borrowed("file in ZIP archive"),
+                }
+            }
             ZipError::InvalidPassword => Self::InvalidPassword,
-            _ => Self::Custom {
-                message: Cow::Owned(format!("ZIP error: {}", err)),
-            },
+            _ => {
+                Self::Custom {
+                    message: Cow::Owned(format!("ZIP error: {}", err)),
+                }
+            }
+        }
+    }
+}
+
+impl From<sevenz_rust2::Error> for ArchiveError {
+    fn from(err: sevenz_rust2::Error) -> Self {
+        Self::Custom {
+            message: Cow::Owned(format!("7-Zip error: {}", err)),
         }
     }
 }
@@ -445,15 +487,21 @@ impl From<zip::result::ZipError> for ArchiveError {
 impl From<io::Error> for ArchiveError {
     fn from(err: io::Error) -> Self {
         match err.kind() {
-            io::ErrorKind::NotFound => Self::NotFound {
-                path: Cow::Borrowed("unknown"),
-            },
-            io::ErrorKind::PermissionDenied => Self::PermissionDenied {
-                path: Cow::Borrowed("unknown"),
-            },
-            io::ErrorKind::AlreadyExists => Self::AlreadyExists {
-                path: Cow::Borrowed("unknown"),
-            },
+            io::ErrorKind::NotFound => {
+                Self::NotFound {
+                    path: Cow::Borrowed("unknown"),
+                }
+            }
+            io::ErrorKind::PermissionDenied => {
+                Self::PermissionDenied {
+                    path: Cow::Borrowed("unknown"),
+                }
+            }
+            io::ErrorKind::AlreadyExists => {
+                Self::AlreadyExists {
+                    path: Cow::Borrowed("unknown"),
+                }
+            }
             _ => Self::io_from_error("I/O operation", err),
         }
     }
@@ -485,7 +533,7 @@ impl ErrorStrExt for ErrorStr {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```no_run
 /// use std::fs::File;
 /// use compak::{Result, ErrorContext};
 ///

@@ -15,22 +15,21 @@ use crate::{
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```no_run
 /// use compak::Archive;
 ///
-/// #[tokio::main]
-/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     // Open an existing archive
-///     let archive = Archive::open("example.tar.gz").await?;
-///     
+///     let archive = Archive::open("example.tar.gz")?;
+///
 ///     // Extract to a directory
-///     archive.extract_to("./extracted").await?;
+///     archive.extract_to("./extracted")?;
 ///     Ok(())
 /// }
 /// ```
 pub struct Archive {
-    path: PathBuf,
-    format: ArchiveFormat,
+    pub path: PathBuf,
+    pub format: ArchiveFormat,
 }
 
 impl Archive {
@@ -57,21 +56,23 @@ impl Archive {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```no_run
     /// use compak::Archive;
     ///
-    /// #[tokio::main]
-    /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ///     let archive = Archive::open("data.zip").await?;
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     let archive = Archive::open("data.zip")?;
     ///     println!("Opened archive with format: {}", archive.format);
     ///     Ok(())
     /// }
     /// ```
-    pub async fn open<P: AsRef<Path>>(path: P) -> Result<Self, ArchiveError> {
+    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, ArchiveError> {
         let path = path.as_ref().to_path_buf();
-        let format = format::detect_from_file(&path).await?;
+        let format = format::detect_from_file(&path)?;
 
-        Ok(Archive { path, format })
+        Ok(Archive {
+            path,
+            format,
+        })
     }
 
     /// Creates a new archive instance with format determined by file extension.
@@ -96,7 +97,7 @@ impl Archive {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```no_run
     /// use compak::Archive;
     ///
     /// fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -109,7 +110,10 @@ impl Archive {
         let path = path.as_ref().to_path_buf();
         let format = format::detect_from_extension(&path)?;
 
-        Ok(Archive { path, format })
+        Ok(Archive {
+            path,
+            format,
+        })
     }
 
     /// Extracts the entire archive to the specified output directory.
@@ -137,20 +141,19 @@ impl Archive {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```no_run
     /// use compak::Archive;
     ///
-    /// #[tokio::main]
-    /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ///     let archive = Archive::open("backup.tar.gz").await?;
-    ///     archive.extract_to("./restored_files").await?;
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     let archive = Archive::open("backup.tar.gz")?;
+    ///     archive.extract_to("./restored_files")?;
     ///     println!("Archive extracted successfully!");
     ///     Ok(())
     /// }
     /// ```
-    pub async fn extract_to<P: AsRef<Path>>(&self, output_dir: P) -> Result<(), ArchiveError> {
+    pub fn extract_to<P: AsRef<Path>>(&self, output_dir: P) -> Result<(), ArchiveError> {
         let output_dir = output_dir.as_ref();
-        extract_archive_with_format(self.path.as_ref(), output_dir, self.format).await
+        extract_archive_with_format(self.path.as_ref(), output_dir, self.format)
     }
 }
 
@@ -178,23 +181,19 @@ impl Archive {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```no_run
 /// use compak::extract_archive;
 ///
-/// #[tokio::main]
-/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     // Extract archive in one line
-///     extract_archive("data.zip", "./extracted").await?;
+///     extract_archive("data.zip", "./extracted")?;
 ///     println!("Archive extracted!");
 ///     Ok(())
 /// }
 /// ```
-pub async fn extract_archive<P: AsRef<Path>>(
-    archive_path: P,
-    output_dir: P,
-) -> Result<(), ArchiveError> {
-    let archive = Archive::open(archive_path).await?;
-    archive.extract_to(output_dir).await
+pub fn extract_archive<P: AsRef<Path>>(archive_path: P, output_dir: P) -> Result<(), ArchiveError> {
+    let archive = Archive::open(archive_path)?;
+    archive.extract_to(output_dir)
 }
 
 /// Internal function that extracts the contents of an archive file to a directory.
@@ -220,7 +219,7 @@ pub async fn extract_archive<P: AsRef<Path>>(
 /// * The output directory cannot be created
 /// * The archive format is not yet implemented
 /// * Format-specific extraction fails
-async fn extract_archive_with_format<P: AsRef<Path>>(
+fn extract_archive_with_format<P: AsRef<Path>>(
     path: P,
     output_dir: P,
     format: ArchiveFormat,
@@ -230,23 +229,21 @@ async fn extract_archive_with_format<P: AsRef<Path>>(
 
     // Ensure output directory exists
     if !output_dir.exists() {
-        tokio::fs::create_dir_all(output_dir).await?;
+        std::fs::create_dir_all(output_dir)?;
     }
 
     match format {
-        ArchiveFormat::Zip => extract_zip(path, output_dir).await,
-        ArchiveFormat::TarGz => extract_tar(path, output_dir, flate2::read::GzDecoder::new).await,
-        ArchiveFormat::TarXz => extract_tar(path, output_dir, xz2::read::XzDecoder::new).await,
-        ArchiveFormat::TarBz2 => extract_tar(path, output_dir, bzip2::read::BzDecoder::new).await,
+        ArchiveFormat::Zip => extract_zip(path, output_dir),
+        ArchiveFormat::TarGz => extract_tar(path, output_dir, flate2::read::GzDecoder::new),
+        ArchiveFormat::TarXz => extract_tar(path, output_dir, xz2::read::XzDecoder::new),
+        ArchiveFormat::TarBz2 => extract_tar(path, output_dir, bzip2::read::BzDecoder::new),
         ArchiveFormat::TarZst => {
             extract_tar(path, output_dir, |f| {
                 zstd::stream::read::Decoder::new(f).unwrap()
             })
-            .await
         }
-        ArchiveFormat::Tar => unimplemented!(),
-        ArchiveFormat::SevenZ => unimplemented!(),
-        ArchiveFormat::Rar => unimplemented!(),
+        ArchiveFormat::Tar => extract_tar(path, output_dir, |f| f),
+        ArchiveFormat::SevenZ => extract_7z(path, output_dir),
     }
 }
 /// Generic function for extracting TAR-based archives with different compression formats.
@@ -279,11 +276,7 @@ async fn extract_archive_with_format<P: AsRef<Path>>(
 /// * The decompression fails
 /// * The TAR extraction fails
 /// * There are I/O errors during extraction
-async fn extract_tar<F, R>(
-    path: &Path,
-    output_dir: &Path,
-    decompress: F,
-) -> Result<(), ArchiveError>
+fn extract_tar<F, R>(path: &Path, output_dir: &Path, decode: F) -> Result<(), ArchiveError>
 where
     F: FnOnce(std::fs::File) -> R + Send + 'static,
     R: Read + Send + 'static,
@@ -292,8 +285,8 @@ where
     let output_dir = output_dir.to_path_buf();
 
     let file = std::fs::File::open(&path)?;
-    let decompressed = decompress(file);
-    let mut archive = tar::Archive::new(decompressed);
+    let reader = decode(file);
+    let mut archive = tar::Archive::new(reader);
     archive.unpack(&output_dir)?;
 
     Ok(())
@@ -322,7 +315,7 @@ where
 /// * There are permission issues creating directories or files
 /// * There are I/O errors during file extraction
 /// * The ZIP contains invalid file paths
-async fn extract_zip(path: &Path, output_dir: &Path) -> Result<(), ArchiveError> {
+fn extract_zip(path: &Path, output_dir: &Path) -> Result<(), ArchiveError> {
     let path = path.to_path_buf();
     let output_dir = output_dir.to_path_buf();
 
@@ -336,14 +329,42 @@ async fn extract_zip(path: &Path, output_dir: &Path) -> Result<(), ArchiveError>
         if file.name().ends_with('/') {
             std::fs::create_dir_all(&out_path)?;
         } else {
-            if let Some(p) = out_path.parent() {
-                if !p.exists() {
-                    std::fs::create_dir_all(p)?;
-                }
+            if let Some(p) = out_path.parent()
+                && !p.exists()
+            {
+                std::fs::create_dir_all(p)?;
             }
             let mut out_file = std::fs::File::create(&out_path)?;
             io::copy(&mut file, &mut out_file)?;
         }
     }
     Ok(())
+}
+
+/// Extracts a 7-Zip archive to the specified output directory.
+///
+/// This function handles 7-Zip-specific extraction
+///
+/// # Arguments
+///
+/// * `path` - Path to the 7-Zip archive file
+/// * `output_dir` - Directory where the contents should be extracted
+///
+/// # Returns
+///
+/// * `Ok(())` - Extraction was successful
+/// * `Err(ArchiveError)` - An error occurred during extraction
+///
+/// # Errors
+///
+/// This function will return an error if:
+/// * The 7-Zip file cannot be opened or read
+/// * There are permission issues creating directories or files
+/// * There are I/O errors during file extraction
+/// * The 7-Zip contains invalid file paths
+fn extract_7z(path: &Path, output_dir: &Path) -> Result<(), ArchiveError> {
+    let path = path.to_path_buf();
+    let output_dir = output_dir.to_path_buf();
+
+    Ok(sevenz_rust2::decompress_file(path, output_dir)?)
 }

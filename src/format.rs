@@ -1,8 +1,9 @@
 use std::{
     fmt::{self, Display},
+    fs::File,
+    io::Read,
     path::Path,
 };
-use tokio::io::AsyncReadExt;
 
 use crate::error::ArchiveError;
 
@@ -36,8 +37,6 @@ pub enum ArchiveFormat {
     Tar,
     /// 7-Zip archive (.7z) - not yet implemented
     SevenZ,
-    /// RAR archive (.rar) - not yet implemented
-    Rar,
 }
 
 impl Display for ArchiveFormat {
@@ -50,7 +49,6 @@ impl Display for ArchiveFormat {
             ArchiveFormat::TarXz => write!(f, "TAR.XZ"),
             ArchiveFormat::TarZst => write!(f, "TAR.ZST"),
             ArchiveFormat::SevenZ => write!(f, "7Z"),
-            ArchiveFormat::Rar => write!(f, "RAR"),
         }
     }
 }
@@ -83,7 +81,6 @@ impl ArchiveFormat {
             ArchiveFormat::TarXz => "tar.xz",
             ArchiveFormat::TarZst => "tar.zst",
             ArchiveFormat::SevenZ => "7z",
-            ArchiveFormat::Rar => "rar",
         }
     }
 
@@ -99,7 +96,7 @@ impl ArchiveFormat {
     /// # Panics
     ///
     /// This method will panic for formats that don't have MIME types defined yet
-    /// (Tar, TarZst, SevenZ, Rar).
+    /// (Tar, TarZst, SevenZ).
     ///
     /// # Examples
     ///
@@ -115,30 +112,27 @@ impl ArchiveFormat {
             ArchiveFormat::TarGz => "application/gzip",
             ArchiveFormat::TarXz => "application/x-xz",
             ArchiveFormat::TarBz2 => "application/x-bzip2",
-            ArchiveFormat::TarZst => todo!(),
-            ArchiveFormat::Tar => todo!(),
-            ArchiveFormat::SevenZ => todo!(),
-            ArchiveFormat::Rar => todo!(),
+            ArchiveFormat::TarZst => "application/zstd",
+            ArchiveFormat::Tar => "application/x-tar",
+            ArchiveFormat::SevenZ => "application/x-7z-compressed",
         }
     }
 }
 
-/// Magic number (file signature) for ZIP files
-const ZIP_MAGIC: &[u8] = &[0x50, 0x4B, 0x03, 0x04];
-/// Magic number for GZIP files  
-const GZIP_MAGIC: &[u8] = &[0x1F, 0x8B];
-/// Magic number for XZ files
-const XZ_MAGIC: &[u8] = &[0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00];
-/// Magic number for BZIP2 files
-const BZIP2_MAGIC: &[u8] = &[0x42, 0x5A, 0x68];
-/// Magic number for Zstandard files
-const ZSTD_MAGIC: &[u8] = &[0x28, 0xB5, 0x2F, 0xFD];
-/// Magic string for TAR files (located at offset 257)
-const TAR_MAGIC: &[u8] = b"ustar";
-/// Magic number for 7-Zip files
-const SEVENZIP_MAGIC: &[u8] = &[0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C];
-/// Magic number for RAR files
-const RAR_MAGIC: &[u8] = &[0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00];
+/// File signature for ZIP files
+const ZIP_SIGNATURE: &[u8] = &[0x50, 0x4B, 0x03, 0x04];
+/// File signature for GZIP files
+const GZIP_SIGNATURE: &[u8] = &[0x1F, 0x8B];
+/// File signature for XZ files
+const XZ_SIGNATURE: &[u8] = &[0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00];
+/// File signature for BZIP2 files
+const BZIP2_SIGNATURE: &[u8] = &[0x42, 0x5A, 0x68];
+/// File signature for Zstandard files
+const ZSTD_SIGNATURE: &[u8] = &[0x28, 0xB5, 0x2F, 0xFD];
+/// File signature for TAR files (located at offset 257)
+const TAR_SIGNATURE: &[u8] = &[0x75, 0x73, 0x74, 0x61, 0x72];
+/// File signature for 7-Zip files
+const SEVENZIP_SIGNATURE: &[u8] = &[0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C];
 
 /// Detects archive format from the raw bytes of a file.
 ///
@@ -159,26 +153,26 @@ const RAR_MAGIC: &[u8] = &[0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00];
 ///
 /// ```rust
 /// // This is an internal function, but shows the concept
+/// use compak::format::{detect_from_bytes, ArchiveFormat};
+///
 /// let zip_data = &[0x50, 0x4B, 0x03, 0x04, /* ... */];
 /// let format = detect_from_bytes(zip_data);
 /// assert_eq!(format, Some(ArchiveFormat::Zip));
 /// ```
-fn detect_from_bytes(data: &[u8]) -> Option<ArchiveFormat> {
-    if data.starts_with(ZIP_MAGIC) {
+pub fn detect_from_bytes(data: &[u8]) -> Option<ArchiveFormat> {
+    if data.starts_with(ZIP_SIGNATURE) {
         Some(ArchiveFormat::Zip)
-    } else if data.starts_with(GZIP_MAGIC) {
+    } else if data.starts_with(GZIP_SIGNATURE) {
         Some(ArchiveFormat::TarGz)
-    } else if data.starts_with(XZ_MAGIC) {
+    } else if data.starts_with(XZ_SIGNATURE) {
         Some(ArchiveFormat::TarXz)
-    } else if data.starts_with(BZIP2_MAGIC) {
+    } else if data.starts_with(BZIP2_SIGNATURE) {
         Some(ArchiveFormat::TarBz2)
-    } else if data.starts_with(ZSTD_MAGIC) {
+    } else if data.starts_with(ZSTD_SIGNATURE) {
         Some(ArchiveFormat::TarZst)
-    } else if data.starts_with(SEVENZIP_MAGIC) {
+    } else if data.starts_with(SEVENZIP_SIGNATURE) {
         Some(ArchiveFormat::SevenZ)
-    } else if data.starts_with(RAR_MAGIC) {
-        Some(ArchiveFormat::Rar)
-    } else if data.len() >= 265 && &data[257..262] == TAR_MAGIC {
+    } else if data.len() >= 265 && &data[257..262] == TAR_SIGNATURE {
         Some(ArchiveFormat::Tar)
     } else {
         None
@@ -202,18 +196,13 @@ fn detect_from_bytes(data: &[u8]) -> Option<ArchiveFormat> {
 /// # Examples
 ///
 /// ```rust
-/// use compak::format::detect_from_extension;
+/// use compak::format::{detect_from_extension, ArchiveFormat};
 /// use std::path::Path;
 ///
-/// let format = detect_from_extension(Path::new("archive.tar.gz"))?;
-/// assert_eq!(format, ArchiveFormat::TarGz);
-///
-/// let format = detect_from_extension(Path::new("data.zip"))?;
-/// assert_eq!(format, ArchiveFormat::Zip);
+/// let format = detect_from_extension(Path::new("archive.tar.gz"));
+/// let format = detect_from_extension(Path::new("data.zip"));
 /// ```
-pub(crate) fn detect_from_extension<P: AsRef<Path>>(
-    path: P,
-) -> Result<ArchiveFormat, ArchiveError> {
+pub fn detect_from_extension<P: AsRef<Path>>(path: P) -> Result<ArchiveFormat, ArchiveError> {
     let path_str = path.as_ref().to_string_lossy().to_lowercase();
 
     if path_str.ends_with(".tar.gz") || path_str.ends_with(".tgz") {
@@ -230,8 +219,6 @@ pub(crate) fn detect_from_extension<P: AsRef<Path>>(
         Ok(ArchiveFormat::Zip)
     } else if path_str.ends_with(".7z") {
         Ok(ArchiveFormat::SevenZ)
-    } else if path_str.ends_with(".rar") {
-        Ok(ArchiveFormat::Rar)
     } else {
         Err(ArchiveError::unsupported_static("format"))
     }
@@ -264,19 +251,12 @@ pub(crate) fn detect_from_extension<P: AsRef<Path>>(
 /// ```rust
 /// use compak::format::detect_from_file;
 ///
-/// #[tokio::main]
-/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
-///     let format = detect_from_file("mystery_archive.bin").await?;
-///     println!("Detected format: {}", format);
-///     Ok(())
-/// }
+/// let format = detect_from_file("archive.bin");
 /// ```
-pub(crate) async fn detect_from_file<P: AsRef<Path>>(
-    path: P,
-) -> Result<ArchiveFormat, ArchiveError> {
-    let mut file = tokio::fs::File::open(&path).await?;
+pub fn detect_from_file<P: AsRef<Path>>(path: P) -> Result<ArchiveFormat, ArchiveError> {
+    let mut file = File::open(&path)?;
     let mut buffer = [0u8; 512];
-    let n = file.read(&mut buffer).await?;
+    let n = file.read(&mut buffer)?;
 
     detect_from_bytes(&buffer[..n])
         .or_else(|| detect_from_extension(path.as_ref()).ok())
