@@ -1,4 +1,10 @@
 
+## [0.0.2](https://github.com/QaidVoid/compak/compare/v0.0.1...v0.0.2) - 2025-11-01
+
+### Other
+
+- Add tar and 7z support, drop async and rar - ([d156b02](https://github.com/QaidVoid/compak/commit/d156b02283f7e9468c4282680fd9e7f95dd938c0))
+
 ## [0.0.1](https://github.com/QaidVoid/compak/compare/v0.0.0...v0.0.1) - 2025-06-29
 
 ### Other

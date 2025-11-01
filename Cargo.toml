@@ -1,7 +1,7 @@
 [package]
 name = "compak"
 description = "A high level library for archive management"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2024"
 license = "MIT"
 authors = ["Rabindra Dhakal <contact@qaidvoid.dev>"]
