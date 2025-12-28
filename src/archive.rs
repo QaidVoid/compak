@@ -235,7 +235,7 @@ fn extract_archive_with_format<P: AsRef<Path>>(
     match format {
         ArchiveFormat::Zip => extract_zip(path, output_dir),
         ArchiveFormat::TarGz => extract_tar(path, output_dir, flate2::read::GzDecoder::new),
-        ArchiveFormat::TarXz => extract_tar(path, output_dir, xz2::read::XzDecoder::new),
+        ArchiveFormat::TarXz => extract_tar(path, output_dir, liblzma::read::XzDecoder::new),
         ArchiveFormat::TarBz2 => extract_tar(path, output_dir, bzip2::read::BzDecoder::new),
         ArchiveFormat::TarZst => {
             extract_tar(path, output_dir, |f| {
