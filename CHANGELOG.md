@@ -1,4 +1,10 @@
 
+## [0.1.1](https://github.com/QaidVoid/compak/compare/v0.1.0...v0.1.1) - 2025-12-28
+
+### Other
+
+- Update dependencies - ([f277adb](https://github.com/QaidVoid/compak/commit/f277adbc7cd2e6da706809fed3cbcd5b69990d1f))
+
 ## [0.1.0](https://github.com/QaidVoid/compak/compare/v0.0.1...v0.1.0) - 2025-11-01
 
 ### Other
