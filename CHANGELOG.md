@@ -1,4 +1,10 @@
 
+## [0.1.2](https://github.com/QaidVoid/compak/compare/v0.1.1...v0.1.2) - 2026-01-07
+
+### Other
+
+- Update supported zip compression methods - ([55a37de](https://github.com/QaidVoid/compak/commit/55a37defc8db94ebf67a85b014bd194249723a49))
+
 ## [0.1.1](https://github.com/QaidVoid/compak/compare/v0.1.0...v0.1.1) - 2025-12-28
 
 ### Other
