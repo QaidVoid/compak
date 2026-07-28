@@ -1,4 +1,10 @@
 
+## [0.2.0](https://github.com/QaidVoid/compak/compare/v0.1.2...v0.2.0) - 2026-07-28
+
+### Added
+
+- [**breaking**] Detect and extract bare gz, xz, bz2 and zst - ([74794ea](https://github.com/QaidVoid/compak/commit/74794ea54672644760348843b82d8e80c66c1c77))
+
 ## [0.1.2](https://github.com/QaidVoid/compak/compare/v0.1.1...v0.1.2) - 2026-01-07
 
 ### Other
