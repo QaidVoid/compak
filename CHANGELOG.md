@@ -1,4 +1,10 @@
 
+## [0.2.1](https://github.com/QaidVoid/compak/compare/v0.2.0...v0.2.1) - 2026-07-28
+
+### Other
+
+- Use trusted publishing - ([2653de5](https://github.com/QaidVoid/compak/commit/2653de5f601e18c8e5f14784fd3b1e4801470121))
+
 ## [0.2.0](https://github.com/QaidVoid/compak/compare/v0.1.2...v0.2.0) - 2026-07-28
 
 ### Added
