@@ -137,7 +137,6 @@ impl Archive {
     /// * The output directory cannot be created
     /// * There are permission issues
     /// * The archive is corrupted
-    /// * The archive format is not yet implemented
     ///
     /// # Examples
     ///
@@ -217,7 +216,6 @@ pub fn extract_archive<P: AsRef<Path>>(archive_path: P, output_dir: P) -> Result
 ///
 /// This function will return an error if:
 /// * The output directory cannot be created
-/// * The archive format is not yet implemented
 /// * Format-specific extraction fails
 fn extract_archive_with_format<P: AsRef<Path>>(
     path: P,
@@ -244,7 +242,38 @@ fn extract_archive_with_format<P: AsRef<Path>>(
         }
         ArchiveFormat::Tar => extract_tar(path, output_dir, |f| f),
         ArchiveFormat::SevenZ => extract_7z(path, output_dir),
+        ArchiveFormat::Gz => extract_single(path, output_dir, flate2::read::GzDecoder::new),
+        ArchiveFormat::Xz => extract_single(path, output_dir, liblzma::read::XzDecoder::new),
+        ArchiveFormat::Bz2 => extract_single(path, output_dir, bzip2::read::BzDecoder::new),
+        ArchiveFormat::Zst => {
+            extract_single(path, output_dir, |f| {
+                zstd::stream::read::Decoder::new(f).unwrap()
+            })
+        }
     }
+}
+
+/// Decompresses a single compressed file into the output directory.
+///
+/// Unlike the TAR formats there is no container and so no name to recover, so
+/// the result takes the source name with its compression suffix removed.
+fn extract_single<F, R>(path: &Path, output_dir: &Path, decode: F) -> Result<(), ArchiveError>
+where
+    F: FnOnce(std::fs::File) -> R,
+    R: Read,
+{
+    let stem = path
+        .file_stem()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("output"));
+    let dest = output_dir.join(stem);
+
+    let file = std::fs::File::open(path)?;
+    let mut reader = decode(file);
+    let mut out = std::fs::File::create(&dest)?;
+    io::copy(&mut reader, &mut out)?;
+
+    Ok(())
 }
 /// Generic function for extracting TAR-based archives with different compression formats.
 ///

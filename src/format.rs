@@ -33,10 +33,18 @@ pub enum ArchiveFormat {
     TarBz2,
     /// TAR archive compressed with Zstandard (.tar.zst)
     TarZst,
-    /// Plain TAR archive (.tar) - not yet implemented
+    /// Plain TAR archive (.tar)
     Tar,
-    /// 7-Zip archive (.7z) - not yet implemented
+    /// 7-Zip archive (.7z)
     SevenZ,
+    /// A single GZIP-compressed file (.gz), not a TAR
+    Gz,
+    /// A single XZ-compressed file (.xz), not a TAR
+    Xz,
+    /// A single BZIP2-compressed file (.bz2), not a TAR
+    Bz2,
+    /// A single Zstandard-compressed file (.zst), not a TAR
+    Zst,
 }
 
 impl Display for ArchiveFormat {
@@ -49,6 +57,10 @@ impl Display for ArchiveFormat {
             ArchiveFormat::TarXz => write!(f, "TAR.XZ"),
             ArchiveFormat::TarZst => write!(f, "TAR.ZST"),
             ArchiveFormat::SevenZ => write!(f, "7Z"),
+            ArchiveFormat::Gz => write!(f, "GZ"),
+            ArchiveFormat::Xz => write!(f, "XZ"),
+            ArchiveFormat::Bz2 => write!(f, "BZ2"),
+            ArchiveFormat::Zst => write!(f, "ZST"),
         }
     }
 }
@@ -81,22 +93,20 @@ impl ArchiveFormat {
             ArchiveFormat::TarXz => "tar.xz",
             ArchiveFormat::TarZst => "tar.zst",
             ArchiveFormat::SevenZ => "7z",
+            ArchiveFormat::Gz => "gz",
+            ArchiveFormat::Xz => "xz",
+            ArchiveFormat::Bz2 => "bz2",
+            ArchiveFormat::Zst => "zst",
         }
     }
 
     /// Returns the MIME type for this archive format.
     ///
     /// This method returns the standard MIME type used for each format.
-    /// Some formats may not have a MIME type defined yet (marked with `todo!()`).
     ///
     /// # Returns
     ///
     /// A string slice containing the MIME type.
-    ///
-    /// # Panics
-    ///
-    /// This method will panic for formats that don't have MIME types defined yet
-    /// (Tar, TarZst, SevenZ).
     ///
     /// # Examples
     ///
@@ -115,6 +125,10 @@ impl ArchiveFormat {
             ArchiveFormat::TarZst => "application/zstd",
             ArchiveFormat::Tar => "application/x-tar",
             ArchiveFormat::SevenZ => "application/x-7z-compressed",
+            ArchiveFormat::Gz => "application/gzip",
+            ArchiveFormat::Xz => "application/x-xz",
+            ArchiveFormat::Bz2 => "application/x-bzip2",
+            ArchiveFormat::Zst => "application/zstd",
         }
     }
 }
@@ -219,6 +233,14 @@ pub fn detect_from_extension<P: AsRef<Path>>(path: P) -> Result<ArchiveFormat, A
         Ok(ArchiveFormat::Zip)
     } else if path_str.ends_with(".7z") {
         Ok(ArchiveFormat::SevenZ)
+    } else if path_str.ends_with(".gz") {
+        Ok(ArchiveFormat::Gz)
+    } else if path_str.ends_with(".xz") {
+        Ok(ArchiveFormat::Xz)
+    } else if path_str.ends_with(".bz2") {
+        Ok(ArchiveFormat::Bz2)
+    } else if path_str.ends_with(".zst") {
+        Ok(ArchiveFormat::Zst)
     } else {
         Err(ArchiveError::unsupported_static("format"))
     }
@@ -258,7 +280,61 @@ pub fn detect_from_file<P: AsRef<Path>>(path: P) -> Result<ArchiveFormat, Archiv
     let mut buffer = [0u8; 512];
     let n = file.read(&mut buffer)?;
 
-    detect_from_bytes(&buffer[..n])
+    let format = detect_from_bytes(&buffer[..n])
         .or_else(|| detect_from_extension(path.as_ref()).ok())
-        .ok_or(ArchiveError::unsupported_static("format"))
+        .ok_or(ArchiveError::unsupported_static("format"))?;
+
+    Ok(refine_compressed(path.as_ref(), format))
+}
+
+/// Distinguish a compressed TAR from a single compressed file.
+///
+/// Both share a magic number, so the container is only knowable by
+/// decompressing far enough to look for the TAR signature at offset 257. A
+/// stream that cannot be read is left as detected, so a corrupt archive still
+/// fails in extraction rather than being silently reclassified.
+fn refine_compressed(path: &Path, format: ArchiveFormat) -> ArchiveFormat {
+    let bare = match format {
+        ArchiveFormat::TarGz => ArchiveFormat::Gz,
+        ArchiveFormat::TarXz => ArchiveFormat::Xz,
+        ArchiveFormat::TarBz2 => ArchiveFormat::Bz2,
+        ArchiveFormat::TarZst => ArchiveFormat::Zst,
+        other => return other,
+    };
+
+    match reads_as_tar(path, format) {
+        Some(true) | None => format,
+        Some(false) => bare,
+    }
+}
+
+/// Read the first TAR header's worth of the decompressed stream and report
+/// whether it carries the TAR signature. `None` means the stream could not be
+/// read far enough to tell.
+fn reads_as_tar(path: &Path, format: ArchiveFormat) -> Option<bool> {
+    let file = File::open(path).ok()?;
+    let mut reader: Box<dyn Read> = match format {
+        ArchiveFormat::TarGz => Box::new(flate2::read::GzDecoder::new(file)),
+        ArchiveFormat::TarXz => Box::new(liblzma::read::XzDecoder::new(file)),
+        ArchiveFormat::TarBz2 => Box::new(bzip2::read::BzDecoder::new(file)),
+        ArchiveFormat::TarZst => Box::new(zstd::stream::read::Decoder::new(file).ok()?),
+        _ => return None,
+    };
+
+    let mut head = [0u8; 512];
+    let mut filled = 0;
+    while filled < head.len() {
+        match reader.read(&mut head[filled..]) {
+            Ok(0) => break,
+            Ok(n) => filled += n,
+            Err(_) => return None,
+        }
+    }
+
+    // Anything shorter than a TAR header cannot be a TAR, and a short read is
+    // conclusive here rather than a failure to tell.
+    if filled < 262 {
+        return Some(false);
+    }
+    Some(&head[257..262] == TAR_SIGNATURE)
 }
