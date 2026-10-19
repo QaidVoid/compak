@@ -343,7 +343,7 @@ where
 /// * The ZIP file cannot be opened or is corrupted
 /// * There are permission issues creating directories or files
 /// * There are I/O errors during file extraction
-/// * The ZIP contains invalid file paths
+/// * The ZIP contains invalid file paths, or one outside `output_dir`
 fn extract_zip(path: &Path, output_dir: &Path) -> Result<(), ArchiveError> {
     let path = path.to_path_buf();
     let output_dir = output_dir.to_path_buf();
@@ -353,10 +353,17 @@ fn extract_zip(path: &Path, output_dir: &Path) -> Result<(), ArchiveError> {
 
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
-        let name = file.name()?.into_owned();
-        let out_path = output_dir.join(&name);
+        // An absolute name or one climbing out with `..` would otherwise be
+        // written wherever it points.
+        let Some(name) = file.enclosed_name() else {
+            return Err(ArchiveError::InvalidArchive {
+                format: ArchiveFormat::Zip,
+                reason: format!("entry {:?} escapes the output directory", file.name()?).into(),
+            });
+        };
+        let out_path = output_dir.join(name);
 
-        if name.ends_with('/') {
+        if file.is_dir() {
             std::fs::create_dir_all(&out_path)?;
         } else {
             if let Some(p) = out_path.parent()
@@ -397,4 +404,52 @@ fn extract_7z(path: &Path, output_dir: &Path) -> Result<(), ArchiveError> {
     let output_dir = output_dir.to_path_buf();
 
     Ok(sevenz_rust2::decompress_file(path, output_dir)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{fs::File, io::Write};
+
+    use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
+
+    use super::*;
+
+    fn write_zip(path: &Path, entries: &[(&str, Option<&[u8]>)]) {
+        let mut zip = ZipWriter::new(File::create(path).unwrap());
+        let options = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+        for (name, contents) in entries {
+            match contents {
+                Some(bytes) => {
+                    zip.start_file(*name, options).unwrap();
+                    zip.write_all(bytes).unwrap();
+                }
+                None => zip.add_directory(*name, options).unwrap(),
+            }
+        }
+        zip.finish().unwrap();
+    }
+
+    #[test]
+    fn zip_extracts_files_and_directories() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("ok.zip");
+        write_zip(&archive, &[("bin/", None), ("bin/tool", Some(b"tool"))]);
+
+        let out = dir.path().join("out");
+        extract_archive(&archive, &out).unwrap();
+
+        assert!(out.join("bin").is_dir());
+        assert_eq!(std::fs::read(out.join("bin/tool")).unwrap(), b"tool");
+    }
+
+    #[test]
+    fn zip_entries_cannot_escape_the_output_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("evil.zip");
+        write_zip(&archive, &[("../escaped", Some(b"x"))]);
+
+        let out = dir.path().join("out");
+        assert!(extract_archive(&archive, &out).is_err());
+        assert!(!dir.path().join("escaped").exists());
+    }
 }
