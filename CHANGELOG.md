@@ -1,4 +1,10 @@
 
+## [0.2.2](https://github.com/QaidVoid/compak/compare/v0.2.1...v0.2.2) - 2026-10-19
+
+### Added
+
+- Gate each format behind a cargo feature - ([ab67b77](https://github.com/QaidVoid/compak/commit/ab67b770caa3655f70da915b749be71698ed02e5))
+
 ## [0.2.1](https://github.com/QaidVoid/compak/compare/v0.2.0...v0.2.1) - 2026-10-19
 
 ### Fixed
