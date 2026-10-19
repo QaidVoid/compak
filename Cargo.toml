@@ -7,14 +7,26 @@ license = "MIT"
 authors = ["Rabindra Dhakal <contact@qaidvoid.dev>"]
 repository = "https://github.com/QaidVoid/compak"
 
+[features]
+default = ["zip", "7z", "tar", "gzip", "xz", "bzip2", "zstd"]
+# Archive containers. A compressed TAR needs `tar` and its codec.
+zip = ["dep:zip"]
+7z = ["dep:sevenz-rust2"]
+tar = ["dep:tar"]
+# Compression codecs, for compressed TARs and bare compressed files.
+gzip = ["dep:flate2"]
+xz = ["dep:liblzma"]
+bzip2 = ["dep:bzip2"]
+zstd = ["dep:zstd"]
+
 [dependencies]
-bzip2 = "0.6.1"
-flate2 = { version = "1.1.10" }
-sevenz-rust2 = "0.24.1"
-tar = "0.4.46"
-liblzma = "0.4.9"
-zip = { version = "9.0.5", default-features = false, features = ["time", "aes-crypto", "deflate", "lzma", "zstd"] }
-zstd = "0.14.3"
+bzip2 = { version = "0.6.1", optional = true }
+flate2 = { version = "1.1.10", optional = true }
+sevenz-rust2 = { version = "0.24.1", optional = true }
+tar = { version = "0.4.46", optional = true }
+liblzma = { version = "0.4.9", optional = true }
+zip = { version = "9.0.5", default-features = false, features = ["time", "aes-crypto", "deflate", "lzma", "zstd"], optional = true }
+zstd = { version = "0.14.3", optional = true }
 
 [dev-dependencies]
 tempfile = "3.27.0"

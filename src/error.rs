@@ -444,6 +444,7 @@ impl ArchiveError {
     }
 }
 
+#[cfg(feature = "zip")]
 impl From<zip::result::ZipError> for ArchiveError {
     fn from(err: zip::result::ZipError) -> Self {
         use zip::result::ZipError;
@@ -476,6 +477,7 @@ impl From<zip::result::ZipError> for ArchiveError {
     }
 }
 
+#[cfg(feature = "7z")]
 impl From<sevenz_rust2::Error> for ArchiveError {
     fn from(err: sevenz_rust2::Error) -> Self {
         Self::Custom {

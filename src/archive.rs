@@ -1,7 +1,4 @@
-use std::{
-    io::{self, Read},
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use crate::{
     error::ArchiveError,
@@ -231,23 +228,41 @@ fn extract_archive_with_format<P: AsRef<Path>>(
     }
 
     match format {
+        #[cfg(feature = "zip")]
         ArchiveFormat::Zip => extract_zip(path, output_dir),
+        #[cfg(all(feature = "tar", feature = "gzip"))]
         ArchiveFormat::TarGz => extract_tar(path, output_dir, flate2::read::GzDecoder::new),
+        #[cfg(all(feature = "tar", feature = "xz"))]
         ArchiveFormat::TarXz => extract_tar(path, output_dir, liblzma::read::XzDecoder::new),
+        #[cfg(all(feature = "tar", feature = "bzip2"))]
         ArchiveFormat::TarBz2 => extract_tar(path, output_dir, bzip2::read::BzDecoder::new),
+        #[cfg(all(feature = "tar", feature = "zstd"))]
         ArchiveFormat::TarZst => {
             extract_tar(path, output_dir, |f| {
                 zstd::stream::read::Decoder::new(f).unwrap()
             })
         }
+        #[cfg(feature = "tar")]
         ArchiveFormat::Tar => extract_tar(path, output_dir, |f| f),
+        #[cfg(feature = "7z")]
         ArchiveFormat::SevenZ => extract_7z(path, output_dir),
+        #[cfg(feature = "gzip")]
         ArchiveFormat::Gz => extract_single(path, output_dir, flate2::read::GzDecoder::new),
+        #[cfg(feature = "xz")]
         ArchiveFormat::Xz => extract_single(path, output_dir, liblzma::read::XzDecoder::new),
+        #[cfg(feature = "bzip2")]
         ArchiveFormat::Bz2 => extract_single(path, output_dir, bzip2::read::BzDecoder::new),
+        #[cfg(feature = "zstd")]
         ArchiveFormat::Zst => {
             extract_single(path, output_dir, |f| {
                 zstd::stream::read::Decoder::new(f).unwrap()
+            })
+        }
+        #[allow(unreachable_patterns)]
+        other => {
+            Err(ArchiveError::Unsupported {
+                feature: format!("{} is {other}, whose compak feature is off", path.display())
+                    .into(),
             })
         }
     }
@@ -257,10 +272,11 @@ fn extract_archive_with_format<P: AsRef<Path>>(
 ///
 /// Unlike the TAR formats there is no container and so no name to recover, so
 /// the result takes the source name with its compression suffix removed.
+#[cfg(any(feature = "gzip", feature = "xz", feature = "bzip2", feature = "zstd"))]
 fn extract_single<F, R>(path: &Path, output_dir: &Path, decode: F) -> Result<(), ArchiveError>
 where
     F: FnOnce(std::fs::File) -> R,
-    R: Read,
+    R: std::io::Read,
 {
     let stem = path
         .file_stem()
@@ -271,7 +287,7 @@ where
     let file = std::fs::File::open(path)?;
     let mut reader = decode(file);
     let mut out = std::fs::File::create(&dest)?;
-    io::copy(&mut reader, &mut out)?;
+    std::io::copy(&mut reader, &mut out)?;
 
     Ok(())
 }
@@ -305,10 +321,11 @@ where
 /// * The decompression fails
 /// * The TAR extraction fails
 /// * There are I/O errors during extraction
+#[cfg(feature = "tar")]
 fn extract_tar<F, R>(path: &Path, output_dir: &Path, decode: F) -> Result<(), ArchiveError>
 where
     F: FnOnce(std::fs::File) -> R + Send + 'static,
-    R: Read + Send + 'static,
+    R: std::io::Read + Send + 'static,
 {
     let path = path.to_path_buf();
     let output_dir = output_dir.to_path_buf();
@@ -344,6 +361,7 @@ where
 /// * There are permission issues creating directories or files
 /// * There are I/O errors during file extraction
 /// * The ZIP contains invalid file paths, or one outside `output_dir`
+#[cfg(feature = "zip")]
 fn extract_zip(path: &Path, output_dir: &Path) -> Result<(), ArchiveError> {
     let path = path.to_path_buf();
     let output_dir = output_dir.to_path_buf();
@@ -372,7 +390,7 @@ fn extract_zip(path: &Path, output_dir: &Path) -> Result<(), ArchiveError> {
                 std::fs::create_dir_all(p)?;
             }
             let mut out_file = std::fs::File::create(&out_path)?;
-            io::copy(&mut file, &mut out_file)?;
+            std::io::copy(&mut file, &mut out_file)?;
         }
     }
     Ok(())
@@ -399,6 +417,7 @@ fn extract_zip(path: &Path, output_dir: &Path) -> Result<(), ArchiveError> {
 /// * There are permission issues creating directories or files
 /// * There are I/O errors during file extraction
 /// * The 7-Zip contains invalid file paths
+#[cfg(feature = "7z")]
 fn extract_7z(path: &Path, output_dir: &Path) -> Result<(), ArchiveError> {
     let path = path.to_path_buf();
     let output_dir = output_dir.to_path_buf();
@@ -406,7 +425,7 @@ fn extract_7z(path: &Path, output_dir: &Path) -> Result<(), ArchiveError> {
     Ok(sevenz_rust2::decompress_file(path, output_dir)?)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "zip"))]
 mod tests {
     use std::{fs::File, io::Write};
 
@@ -451,5 +470,48 @@ mod tests {
         let out = dir.path().join("out");
         assert!(extract_archive(&archive, &out).is_err());
         assert!(!dir.path().join("escaped").exists());
+    }
+}
+
+#[cfg(test)]
+mod feature_tests {
+    use super::*;
+
+    #[cfg(all(feature = "tar", feature = "xz"))]
+    #[test]
+    fn tar_xz_extracts() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("web.tar.xz");
+        let encoder = liblzma::write::XzEncoder::new(std::fs::File::create(&archive).unwrap(), 6);
+        let mut tar = tar::Builder::new(encoder);
+        let mut header = tar::Header::new_gnu();
+        header.set_size(6);
+        header.set_mode(0o644);
+        header.set_cksum();
+        tar.append_data(&mut header, "web/index.html", &b"<html>"[..])
+            .unwrap();
+        tar.into_inner().unwrap().finish().unwrap();
+
+        let out = dir.path().join("out");
+        extract_archive(&archive, &out).unwrap();
+
+        assert_eq!(
+            std::fs::read(out.join("web/index.html")).unwrap(),
+            b"<html>"
+        );
+    }
+
+    #[cfg(not(feature = "zip"))]
+    #[test]
+    fn a_format_whose_feature_is_off_is_unsupported() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("data.zip");
+        std::fs::write(&archive, b"PK\x03\x04 not built in").unwrap();
+
+        let out = dir.path().join("out");
+        assert!(matches!(
+            extract_archive(&archive, &out),
+            Err(ArchiveError::Unsupported { .. })
+        ));
     }
 }

@@ -308,15 +308,26 @@ fn refine_compressed(path: &Path, format: ArchiveFormat) -> ArchiveFormat {
     }
 }
 
+/// Without a codec there is no stream to look into.
+#[cfg(not(any(feature = "gzip", feature = "xz", feature = "bzip2", feature = "zstd")))]
+fn reads_as_tar(_path: &Path, _format: ArchiveFormat) -> Option<bool> {
+    None
+}
+
 /// Read the first TAR header's worth of the decompressed stream and report
 /// whether it carries the TAR signature. `None` means the stream could not be
 /// read far enough to tell.
+#[cfg(any(feature = "gzip", feature = "xz", feature = "bzip2", feature = "zstd"))]
 fn reads_as_tar(path: &Path, format: ArchiveFormat) -> Option<bool> {
     let file = File::open(path).ok()?;
     let mut reader: Box<dyn Read> = match format {
+        #[cfg(feature = "gzip")]
         ArchiveFormat::TarGz => Box::new(flate2::read::GzDecoder::new(file)),
+        #[cfg(feature = "xz")]
         ArchiveFormat::TarXz => Box::new(liblzma::read::XzDecoder::new(file)),
+        #[cfg(feature = "bzip2")]
         ArchiveFormat::TarBz2 => Box::new(bzip2::read::BzDecoder::new(file)),
+        #[cfg(feature = "zstd")]
         ArchiveFormat::TarZst => Box::new(zstd::stream::read::Decoder::new(file).ok()?),
         _ => return None,
     };
