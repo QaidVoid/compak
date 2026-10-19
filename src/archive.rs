@@ -353,9 +353,10 @@ fn extract_zip(path: &Path, output_dir: &Path) -> Result<(), ArchiveError> {
 
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
-        let out_path = output_dir.join(file.name());
+        let name = file.name()?.into_owned();
+        let out_path = output_dir.join(&name);
 
-        if file.name().ends_with('/') {
+        if name.ends_with('/') {
             std::fs::create_dir_all(&out_path)?;
         } else {
             if let Some(p) = out_path.parent()
